@@ -3,7 +3,7 @@
 Reads Bengaluru Traffic Police parking-violation records and produces, per day:
 a geohash congestion map, a patrol-vs-reality gap with same-day team moves, a
 next-day choke-point forecast (police-station x 2-hour-window), a deployment
-playbook, and a simulated live replay. A right-side assistant answers questions
+playbook, and a replay of a real recorded day. A right-side assistant answers questions
 against the selected day's numbers.
 
 ## Dataset
@@ -81,7 +81,7 @@ Without a key the deterministic responder is used.
 
 ## Tabs
 
-1. **Live mode** — simulated replay of the selected day (30-min steps), worst
+1. **Live mode** — replay of a real recorded day (30-min steps), worst
    spots, key moments, end-of-day summary, next-day forecast on completion.
 2. **Congestion map** — geohash hotspots for the day, with a blind-spot toggle
    (high impact, low patrol coverage).
@@ -108,6 +108,20 @@ data/violations.csv input (you create this from the shipped zip)
 DATA_REPORT.md      column triage and data analysis
 TECHNICAL.md        data schema, scoring, model, cache, full API reference
 ```
+
+## Where this fits (BTP systems)
+
+BTP's ASTraM platform reads live CCTV/ANPR feeds for real-time flow, congestion
+length and incident response. ChokePoint works from the enforcement records and
+answers a different question: where and when to send limited parking-enforcement
+teams the next day, and which of today's patrols are aimed away from the real
+choke points.
+
+Two integration points:
+- ASTraM's measured congestion (length per segment) can validate or recalibrate
+  the impact score used here, which is otherwise a proxy.
+- The per-station shift playbook can feed ASTraM's geofenced e-attendance, so the
+  planned station-to-junction assignment is the one officers clock in against.
 
 ## Scope
 

@@ -324,7 +324,7 @@ def playbook(date: str = Query(...), station: str = Query("All")):
 
 @app.get("/api/replay")
 def replay(date: str = Query(...), station: str = Query("All")):
-    """30-minute snapshots of the day for the simulated live feed: cumulative map,
+    """30-minute snapshots of the day for the live replay: cumulative map,
     a move-a-team recommendation, and the standing top stations."""
     d = evday(date, station).copy()
     if len(d) == 0: return {"buckets": [], "total": 0, "next_pred": []}
