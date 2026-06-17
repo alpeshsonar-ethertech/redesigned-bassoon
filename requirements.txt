@@ -1,0 +1,8 @@
+pandas
+numpy
+pygeohash
+lightgbm
+pyarrow
+fastapi
+uvicorn
+openai
