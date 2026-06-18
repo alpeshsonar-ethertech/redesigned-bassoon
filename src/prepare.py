@@ -2,7 +2,7 @@
 """Precompute ChokePoint cache (station-centric rebuild).
 Run once after placing the CSV:  python src/prepare.py
 Produces cache/: events.parquet, stpanel.parquet, ranker.pkl, names.json, stations.json, static.json"""
-import os, json, pickle, warnings
+import os, sys, glob, json, pickle, zipfile, warnings
 warnings.filterwarnings("ignore")
 import pandas as pd, numpy as np
 import lightgbm as lgb
@@ -12,7 +12,26 @@ HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 CACHE = os.path.join(ROOT, "cache"); os.makedirs(CACHE, exist_ok=True)
 CSV = os.environ.get("CSV", os.path.join(ROOT, "data", "violations.csv"))
 if not os.path.exists(CSV):
-    CSV = "/home/claude/t1/jan to may police violation_anonymized791b166.csv"
+    # The dataset ships as a single zip in data/ — extract it automatically if present.
+    zips = glob.glob(os.path.join(ROOT, "data", "*.zip"))
+    if len(zips) == 1:
+        print("data/violations.csv not found — extracting from", os.path.basename(zips[0]))
+        with zipfile.ZipFile(zips[0]) as z:
+            csvs = [m for m in z.namelist() if m.lower().endswith(".csv")]
+            if csvs:
+                with z.open(csvs[0]) as src, open(CSV, "wb") as dst:
+                    dst.write(src.read())
+                print("wrote", CSV)
+if not os.path.exists(CSV):
+    sys.exit(
+        "\nERROR: input data not found.\n"
+        "Expected the violations CSV at:  data/violations.csv\n\n"
+        "Add it before running prepare.py:\n"
+        '  1. Unzip the dataset that ships in data/ (e.g. "jan to may police violation_anonymized791b166.zip").\n'
+        "  2. Rename the extracted CSV to  violations.csv  so the path is  data/violations.csv\n"
+        "  (Or set the CSV environment variable to point at your file.)\n\n"
+        "See README.md for the exact commands.\n"
+    )
 
 print("loading + cleaning", CSV)
 df, raw = E.load_clean(CSV)

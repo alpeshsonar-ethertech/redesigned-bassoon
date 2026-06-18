@@ -336,24 +336,24 @@ def replay(date: str = Query(...), station: str = Query("All")):
     next_day = f["next"] if f else ""
     first_seen = {}
     for slot in range(6 * 60, 20 * 60 + 1, 30):       # 06:00 .. 20:00 every 30 min
-        sub = d[d.mins <= slot]
+        cap = slot if slot < 20 * 60 else 24 * 60         # final snapshot = whole day (incl. post-20:00 events)
+        sub = d[d.mins <= cap]
         win = d[(d.mins > slot - 30) & (d.mins <= slot)]   # last 30 min
         clock = f"{slot // 60:02d}:{slot % 60:02d}"
         g = sub.groupby("gh7").agg(cis=("impact", "sum")).reset_index().sort_values("cis", ascending=False).head(15)
         mx = g.cis.max() if len(g) else 1
         pts = [{"name": GH7N.get(r.gh7, {}).get("name", r.gh7), "lat": GH7N.get(r.gh7, {}).get("lat"),
                 "lon": GH7N.get(r.gh7, {}).get("lon"), "v": int(round(r.cis / mx * 100))} for _, r in g.iterrows() if GH7N.get(r.gh7)]
-        st = sub.groupby("ps").agg(cis=("impact", "sum"), ncov=("device_id", "nunique")).reset_index().sort_values("cis", ascending=False)
+        st = sub.groupby("ps").agg(cis=("impact", "sum")).reset_index().sort_values("cis", ascending=False)
         total = float(st.cis.sum()) or 1
-        smx = float(st.cis.iloc[0]) if len(st) else 1
-        worst = [{"name": r.ps, "v": int(round(r.cis / smx * 100)), "share": round(r.cis / total * 100, 1)}
-                 for r in st.head(10).itertuples()]
-        active_chokes = int((st.cis / total * 100 >= 6).sum()) if len(st) else 0
-        active_chokes = max(active_chokes, 1 if len(st) else 0)
+        active_chokes = max(int((st.cis / total * 100 >= 6).sum()), 1) if len(st) else 0
         covered = int(round(st.head(10).cis.sum() / total * 100))
         top_st = list(st.head(3).ps)
-        for s in top_st:
-            first_seen.setdefault(s, clock)
+        hs = gh_hotspots(sub, 10)                       # location grain — identical to the map's worst spots
+        worst = [{"name": h["name"], "station": h["ps"], "v": int(h["cis_norm"]),
+                  "share": round(h["cis"] / total * 100, 1)} for h in hs]
+        for w in worst[:3]:
+            first_seen.setdefault(w["name"], clock)
         new_n = int(len(win))
         reco = ""
         if len(st):
@@ -381,25 +381,25 @@ def replay(date: str = Query(...), station: str = Query("All")):
                                  "text": f"<b>{stn}</b> climbing toward a choke point.", "imp": None})
         # #1 worst -> ONE clearly-labelled RECOMMENDATION (never phrased as an executed event)
         if fin:
-            stn = fin[0]["name"]; share = int(round(fin[0]["share"]))
-            ac = max(clamp(first_seen.get(stn, "08:30")), "08:00")
+            loc = fin[0]; nm = loc["name"]; stn = loc.get("station", nm); share = int(round(loc["share"]))
+            ac = max(clamp(first_seen.get(nm, "08:30")), "08:00")
             filtered = bool(station and station != "All")
             if filtered:
                 # single-station view: only this station's data exists, so no citywide share and no neighbour redirect
                 timeline.append({"clock": ac, "tone": "act", "tag": "recommended",
-                                 "text": f"<b>{stn}</b> hits its busiest stretch around now — <b>recommended:</b> concentrate enforcement here through the peak.", "imp": None})
+                                 "text": f"<b>{nm}</b> hits its busiest stretch around now — <b>recommended:</b> concentrate enforcement here through the peak.", "imp": None})
             else:
-                helper = None; dist = None; top_names = {w["name"] for w in fin}
+                helper = None; dist = None; busy = {w.get("station") for w in fin}
                 for nb, dd in NEIGH.get(stn, []):
-                    if nb not in top_names: helper, dist = nb, dd; break
-                imp = f"{stn} alone carries ~{share}% of the day's enforcement load" if 0 < share < 60 else None
+                    if nb not in busy: helper, dist = nb, dd; break
+                imp = f"{nm} alone carries ~{share}% of the day's enforcement load" if 0 < share < 60 else None
                 if helper:
                     timeline.append({"clock": ac, "tone": "act", "tag": "recommended action",
-                                     "text": f"<b>{stn}</b> is the busiest choke point. <b>Recommended:</b> send {helper}'s unit ({dist} km away) to cover it — a quieter nearby station, so no extra staff. Hold the rest.",
+                                     "text": f"<b>{nm}</b> ({stn}) is the busiest choke point. <b>Recommended:</b> send {helper}'s unit ({dist} km away) to cover it — a quieter nearby station, so no extra staff. Hold the rest.",
                                      "imp": imp, "target": helper, "dist": dist})
                 else:
                     timeline.append({"clock": ac, "tone": "act", "tag": "recommended action",
-                                     "text": f"<b>{stn}</b> is the busiest choke point — <b>recommended:</b> concentrate patrols here.", "imp": imp})
+                                     "text": f"<b>{nm}</b> ({stn}) is the busiest choke point — <b>recommended:</b> concentrate patrols here.", "imp": imp})
         timeline.sort(key=lambda b: b["clock"])
     # ---- end-of-day summary (shown in Live once the replay completes) ----
     summary = None

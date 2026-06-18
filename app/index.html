@@ -40,7 +40,8 @@
 .c-hd .sub{font-size:11.5px;color:var(--dim)}
 .c-bd{padding:16px 18px}
 .intro{color:var(--mid);font-size:13px;margin:0 0 14px}
-.maprow{display:grid;grid-template-columns:minmax(0,1fr) clamp(250px,22vw,330px);gap:16px; padding: 15px;}
+.maprow{display:grid;grid-template-columns:minmax(0,1fr) clamp(250px,22vw,330px);gap:16px; padding: 15px;align-items:stretch}
+@media(min-width:1081px){.maprow .rail{height:var(--mh,460px)}.maprow .rail .rows{max-height:none;flex:1;min-height:0;overflow-y:auto}}
 .maprow>div{min-width:0}
 .tab1grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
 .tab1grid>div{min-width:0}
@@ -51,7 +52,7 @@
 .rail .hd{padding:12px 15px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
 .rail .hd b{font-size:13px}
 .rows{overflow-y:auto;overflow-x:hidden;max-height:clamp(420px,56vh,620px)}
-.chat{position:sticky;top:78px;align-self:start;height:calc(100vh - 125px);display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh);overflow:hidden}
+.chat{position:sticky;top:100px;align-self:start;height:calc(100vh - 125px);display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh);overflow:hidden}
 .row{display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer}
 .row:hover{background:#F7F8FC}.row.sel{background:#F0EFFF;box-shadow:inset 3px 0 0 var(--pri)}
 .rk{font-family:var(--d);font-weight:700;color:var(--dim);font-size:13px}
@@ -218,7 +219,7 @@ body.rot-dismiss #rotateOverlay{display:none!important}
             <div class="lrow"><span class="d" style="background:#F2A33C"></span>Medium</div>
             <div class="lrow"><span class="d" style="background:#C3CCD9"></span><span id="lg4">Light</span></div>
           </div></div></div></div>
-      <div class="rail" style="margin-bottom:0"><div class="hd"><b>Worst spots</b><span class="hint" id="railNote">on this date</span></div><div class="rows" id="rail"></div></div>
+      <div class="rail" style="margin-bottom:0"><div class="hd"><b>Worst spots</b><span class="hint" id="railNote">individual locations</span></div><div class="rows" id="rail"></div></div>
     </div>
     <div class="card2 spot" id="spotBox" style="display:none;margin-top:16px"></div>
   </div>
@@ -240,7 +241,7 @@ body.rot-dismiss #rotateOverlay{display:none!important}
     <p class="intro" id="fcIntro">Tomorrow's choke points, before they happen — <b>where</b> they'll be (the recurring hotspots) and <b>when</b> each one peaks (which 2-hour window), so teams can be in position ahead of the jam instead of after it. Below: what we flagged vs. what actually happened.</p>
     <div class="d-flex gap-2 mb-2"><button class="btn-soft" id="hzDay" onclick="setHorizon('day')" style="background:var(--pri);color:#fff">Tomorrow</button><button class="btn-soft" id="hzOut" onclick="setHorizon('outlook')">3-day outlook</button></div>
     <div class="card2"><div class="c-hd"><h2 id="fcTitle">Predicted hotspots — next day</h2><span class="sub" id="fcWhen"></span></div>
-      <div class="maprow"><div><div class="lmap" id="fcMap" style="height:clamp(340px,46vh,520px)"></div></div>
+      <div class="maprow" style="--mh:clamp(340px,46vh,520px)"><div><div class="lmap" id="fcMap" style="height:clamp(340px,46vh,520px)"></div></div>
         <div class="rail p-0 m-0"><div class="hd"><b>Predicted stations</b></div><div class="rows" id="fcTable"></div></div></div></div>
     <div class="card2"><div class="c-hd"><h2>✅ Was the forecast right? (next-day check)</h2><span class="sub" id="cmpWhen"></span></div>
       <div class="c-bd"><div class="fcm" id="fcMetrics" style="margin-bottom:14px"></div>
@@ -288,7 +289,7 @@ body.rot-dismiss #rotateOverlay{display:none!important}
       </div>
     </div>
 
-    <div class="maprow" style="padding:0">
+    <div class="maprow mb-3" style="padding:0;--mh:clamp(380px,52vh,560px)">
       <div><div class="lmap" id="liveMap" style="height:clamp(380px,52vh,560px)"></div></div>
       <div class="rail" style="margin-bottom:0"><div class="hd"><b>Right now — worst spots</b><span class="hint" id="lvWin"></span></div><div class="rows" id="lvWorst"></div></div>
     </div>
@@ -562,8 +563,8 @@ function drawLive(){if(!liveB.length)return;const b=liveB[liveI];clearL('live');
  document.getElementById('liveHeroTitle').textContent=`Bengaluru, ${b.clock} — ${dayState(b.clock)}`;
  document.getElementById('lvWin').textContent=`+${b.new} in last 30 min`;
  const allv=G.station==='All';
- document.getElementById('lvWorst').innerHTML=(b.worst||[]).map((w,i)=>{const sub=allv?(i===0?'~'+w.share+'% of congestion so far':w.share+'% so far'):'this station today';
-  return `<div class="row"><div class="rk">${String(i+1)}</div><div><div class="rname">${w.name}</div><div class="rarea">${sub}</div></div><div class="rsc" style="color:${col(w.v)}">${w.v}</div></div>`;}).join('');
+ document.getElementById('lvWorst').innerHTML=(b.worst||[]).map((w,i)=>{const sub=allv?(w.station||'share of the day\u2019s load'):'this station today';
+  return `<div class="row"><div class="rk">${String(i+1)}</div><div><div class="rname">${w.name}</div><div class="rarea">${sub}</div></div><div class="rsc" style="color:${col(w.v)}">${w.share}%</div></div>`;}).join('');
  const shown=LIVET.filter(t=>t.clock<=b.clock);
  document.getElementById('liveTimeline').innerHTML=shown.length?shown.map(beatHtml).join(''):'<div class="hint" style="padding:6px 2px">Replaying the day — key moments will appear here as they happen.</div>';
  if(liveI>=liveB.length-1)showReveal();}
@@ -579,7 +580,7 @@ function renderLiveSummary(){const s=LIVESUM;if(!s)return;
   <div class="lvsumgrid">
     <div><div class="lvsumnum">${s.events.toLocaleString()}</div><div class="hint">enforcement events</div></div>
     <div><div class="lvsumnum">${s.locations}</div><div class="hint">spots with activity</div></div>
-    <div><div class="hint" style="font-weight:600;margin-bottom:3px">Worst areas</div><div style="font-weight:600;font-size:13.5px">${s.worst.join(' · ')}</div></div>
+    <div><div class="hint" style="font-weight:600;margin-bottom:3px">Worst spots</div><div style="font-weight:600;font-size:13.5px">${s.worst.join(' · ')}</div></div>
   </div>
   <div class="row g-0" style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:14px">
     <div><div class="hint" style="font-weight:600;margin-bottom:8px">What caused the congestion</div>${bars(s.offences,'var(--hot)')}</div>

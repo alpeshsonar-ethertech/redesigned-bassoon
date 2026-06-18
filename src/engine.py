@@ -1,9 +1,10 @@
 """Shared ChokePoint logic: cleaning, impact scoring, geohash, naming.
 Used by prepare.py (precompute) and server.py (live queries)."""
+import os
 import pandas as pd, numpy as np, re
 import pygeohash as pgh
 
-CUT = pd.Timestamp("2024-03-01")  # train < CUT, test >= CUT (held out)
+CUT = pd.Timestamp(os.environ.get("CHOKEPOINT_CUT", "2024-03-01"))  # train < CUT, test >= CUT (held out)
 
 SEV = {107: 4, 109: 4, 104: 3, 108: 3, 111: 3, 105: 2, 112: 2, 113: 2, 116: 0}
 OFF = {104: "Near road crossing", 105: "On footpath", 107: "On a main road", 108: "Opposite parked vehicle",

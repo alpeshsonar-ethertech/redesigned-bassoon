@@ -107,6 +107,7 @@ cache/              generated artifacts (see TECHNICAL.md)
 data/violations.csv input (you create this from the shipped zip)
 DATA_REPORT.md      column triage and data analysis
 TECHNICAL.md        data schema, scoring, model, cache, full API reference
+INTEGRATION.md      point the pipeline at your own data + get predictions
 ```
 
 ## Where this fits (BTP systems)
