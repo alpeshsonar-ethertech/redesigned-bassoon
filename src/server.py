@@ -371,7 +371,7 @@ def replay(date: str = Query(...), station: str = Query("All")):
     if buckets:
         fin = buckets[-1]["worst"]                       # day's worst stations overall
         timeline.append({"clock": "06:30", "tone": "calm", "tag": "calm",
-                         "text": "Day begins — light, even traffic across the city.", "imp": None})
+                         "text": "Day begins — quiet across the city, little recorded yet.", "imp": None})
         clamp = lambda c: c if c > "06:30" else "07:00"
         # 2nd & 3rd worst -> "building" beats at the time they first entered the top
         for rank, tone in [(1, "hot"), (2, "warn")]:
@@ -435,7 +435,7 @@ def day_summary(date, station):
     pk = int((dh if len(dh) else d).groupby("hour").impact.sum().idxmax())
     hol = f" It's a holiday ({STATIC['holidays'].get(str(pd.Timestamp(date).date()), '')})." if E.is_holiday(date) else ""
     return (f"On {date} {scope} there were {n:,} enforcement events across {d.gh7.nunique()} spots, busiest around {pk:02d}:00. "
-            f"Worst areas: {top}. The congestion is driven mainly by {offtxt}, and the vehicles involved are mostly {vname} ({vpct}%).{hol}")
+            f"Worst spots: {top}. The obstruction is driven mainly by {offtxt}, and the vehicles involved are mostly {vname} ({vpct}%).{hol}")
 
 def rich_answer(q, date, station):
     ql = q.lower(); station = station or "All"
@@ -451,7 +451,7 @@ def rich_answer(q, date, station):
             h = hot[0]; d = evday(date, station); dh = d[(d.hour >= 7) & (d.hour <= 21)]
             bz = int((dh if len(dh) else d).groupby("hour").impact.sum().idxmax()) if len(d) else 9
             return {"action": {"tab": "map", "spot": h["gh"]},
-                    "answer": f"{h['name']} is busiest around {h['peak']:02d}:00. Citywide on {date}, congestion peaks around {bz:02d}:00 — best to have teams in place just before then.",
+                    "answer": f"{h['name']} is busiest around {h['peak']:02d}:00. Citywide on {date}, enforcement peaks around {bz:02d}:00 — best to have teams in place just before then.",
                     "follow": ["What should we do there?", "What's the worst spot?", "Predict tomorrow", "Summarise today"]}
     if any(k in ql for k in ["what should we do", "what to do", "do there", "what do we do", "recommend", "advice", "what's wrong", "what is wrong"]):
         hot = gh_hotspots(evday(date, station), 5)
@@ -467,7 +467,7 @@ def rich_answer(q, date, station):
         moves = R.get("moves", [])
         if moves:
             m = moves[0]
-            return {"action": {"tab": "reveal"}, "answer": f"Today, move a team to {m['to']} from {m['frm']} (+{m['gain']} impact). {R['n_missed']} stations are under-served relative to their congestion.",
+            return {"action": {"tab": "reveal"}, "answer": f"Today, move a team to {m['to']} from {m['frm']} (+{m['gain']} impact). {R['n_missed']} stations are under-served relative to their recorded impact.",
                     "follow": ["Show all moves", "What's the worst spot?", "Predict tomorrow", "Plan tomorrow's deployment"]}
         return {"action": {"tab": "reveal"}, "answer": f"Patrols broadly match the hotspots on {date}; few clear mismatches today.",
                 "follow": ["Predict tomorrow", "What's the worst spot?", "Plan tomorrow's deployment", "Summarise today"]}
@@ -477,7 +477,7 @@ def rich_answer(q, date, station):
     if any(k in ql for k in ["tomorrow", "predict", "forecast", "next day", "outlook"]):
         f = forecast_stations(date, "outlook" if "outlook" in ql or "3" in ql else "day", station)
         if f and f["windows"]:
-            top = ", ".join(dict.fromkeys(it["station"] for ow in f["windows"] for it in ow["items"]))[:80]
+            top = ", ".join(list(dict.fromkeys(it["station"] for ow in f["windows"] for it in ow["items"]))[:6])
             return {"action": {"tab": "fc"}, "answer": f"For {f['next']}, the model flags these stations: {top}. It gets ~{f['hit']}/10 right on this held-out test ({f['capture']}% of impact).",
                     "follow": ["Show the patrol schedule", "Did yesterday's prediction work?", "Which stations are missed?", "What's the 3-day outlook?"]}
     if any(k in ql for k in ["deploy", "schedule", "patrol plan", "teams", "where should", "shift", "plan"]):
@@ -486,7 +486,7 @@ def rich_answer(q, date, station):
     if "holiday" in ql or "festival" in ql:
         w = STATIC["holiday_watch"]
         if E.is_holiday(date) and w:
-            return {"action": {"tab": "map"}, "answer": f"{date} is a holiday. On holidays congestion relocates — watch: {', '.join(x['station'] for x in w[:4])}.",
+            return {"action": {"tab": "map"}, "answer": f"{date} is a holiday. On holidays the pattern relocates — watch: {', '.join(x['station'] for x in w[:4])}.",
                     "follow": ["What's the worst spot?", "Predict tomorrow", "Where should we deploy?", "Summarise today"]}
         return {"action": {"tab": "map"}, "answer": f"{date} is a normal working/weekend day — standard hotspot pattern applies.",
                 "follow": ["What's the worst spot?", "Predict tomorrow", "Where should we deploy?", "Summarise today"]}

@@ -6,6 +6,12 @@ next-day choke-point forecast (police-station x 2-hour-window), a deployment
 playbook, and a replay of a real recorded day. A right-side assistant answers questions
 against the selected day's numbers.
 
+**Terminology:** ChokePoint reads parking-enforcement records (challans). "Congestion"
+here means parking-induced obstruction *inferred* from those records — a proxy, not a
+measured traffic feed. The forecast is a learning-to-rank ML model (LightGBM); the
+assistant answers deterministically from computed numbers, with an optional LLM used
+only to rephrase, never to generate facts.
+
 ## Dataset
 
 The repository ships the anonymised source as a zip:
