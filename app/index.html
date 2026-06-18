@@ -526,7 +526,7 @@ async function loadForecast(){const f=await jget(`/api/forecast?date=${G.date}&h
  const flg=dp.items.slice(0,10).filter(x=>x.predicted);const rt=flg.filter(x=>x.correct).length;
  document.getElementById('cmpMatch').textContent=`${rt} of ${flg.length} matched`;
  document.getElementById('fcMetrics').innerHTML=`
-  <div class="met"><div class="n">${dp.cap20}%</div><div class="l">of tomorrow's predicted load sits in the top-20 stations — focus teams here, not everywhere</div></div>
+  <div class="met"><div class="n">${dp.cap20}%</div><div class="l">of tomorrow's enforcement load lands in the top-20 stations we flag — focus teams here, not everywhere</div></div>
   <div class="met"><div class="n">~2×</div><div class="l">more impact covered than spreading teams evenly across the city</div></div>
   <div class="met"><div class="n">${rt}/${flg.length}</div><div class="l">choke points we flagged for tomorrow that turn out genuinely among the worst (see below)</div></div>`;
  cmpMap('cmpMapP',dp.items,'pred');cmpMap('cmpMapA',dp.items,'actual');
