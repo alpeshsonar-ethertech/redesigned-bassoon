@@ -178,6 +178,22 @@ body.rot-dismiss #rotateOverlay{display:none!important}
 .cmparrow{font-size:30px;color:var(--pri);animation:cmparr 1.2s ease-in-out infinite}
 @keyframes cmparr{0%,100%{transform:translateX(-3px);opacity:.45}50%{transform:translateX(3px);opacity:1}}
 .cmpmatch{font-family:var(--d);font-weight:800;font-size:12.5px;color:var(--ok);margin-top:6px;line-height:1.25}
+/* upload / predict-from-your-data tab */
+.upgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:760px){.upgrid{grid-template-columns:1fr}}
+.uplab{font-family:var(--d);font-weight:700;font-size:14px;margin-bottom:4px}
+.uplab .req{font-size:9px;font-weight:700;color:var(--sev);background:#FDE9EA;border-radius:5px;padding:1px 6px;margin-left:6px;text-transform:uppercase;letter-spacing:.04em}
+.uplab .opt{font-size:9px;font-weight:700;color:var(--mid);background:#EEF0F6;border-radius:5px;padding:1px 6px;margin-left:6px;text-transform:uppercase;letter-spacing:.04em}
+.uphint{font-size:12px;color:var(--mid);line-height:1.55;margin-bottom:10px}
+.uphint code{background:#EEF0F6;border-radius:4px;padding:1px 5px;font-size:11px;color:var(--ink)}
+.drop{display:flex;align-items:center;gap:9px;border:1.5px dashed var(--line);border-radius:12px;padding:14px;cursor:pointer;background:#FBFCFE;font-size:13px;color:var(--mid);font-weight:600}
+.drop:hover{border-color:var(--pri);color:var(--pri);background:#F7F6FF}
+.drop input{display:none}.drop::before{content:"📄";font-size:17px}
+.drop.has{border-style:solid;border-color:var(--pri);color:var(--pri);background:#F0EFFF}
+.upwin{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.upwincol{border:1px solid var(--line);border-radius:11px;padding:10px 12px;background:#FBFCFE}
+.upwinh{font-family:var(--d);font-weight:700;font-size:12px;color:var(--pri);margin-bottom:7px}
+.upwinr{font-size:12.5px;display:flex;gap:8px;align-items:center;padding:2px 0}.upwinr .rk{font-size:11px}
 </style></head>
 
 <body>
@@ -203,6 +219,7 @@ body.rot-dismiss #rotateOverlay{display:none!important}
     <button class="tlink" data-v="reveal" onclick="openTab('reveal')">🎯 Coverage gaps (today)</button>
     <button class="tlink" data-v="fc" onclick="openTab('fc')">📅 Tomorrow's forecast</button>
     <button class="tlink" data-v="plan" onclick="openTab('plan')">♟ Tomorrow's deployment</button>
+    <button class="tlink" data-v="upload" onclick="openTab('upload')">🧪 Predict from your data</button>
   </div>
 
   <!-- TAB 1: MAP -->
@@ -266,6 +283,42 @@ body.rot-dismiss #rotateOverlay{display:none!important}
       </div></div>
       <div class="c-bd"><div id="pbLegend" style="margin-bottom:10px"></div><div id="schedGrid"></div></div></div>
     <div class="card2" id="didCard"><div class="c-hd"><h2>✅ Did it work? (next-day check)</h2><span class="sub" id="didWhen"></span></div><div class="c-bd" id="didBody"></div></div>
+  </div>
+
+  <!-- TAB 6: PREDICT FROM YOUR DATA -->
+  <div class="view" id="v-upload">
+    <p class="intro">Drop in your own recent enforcement records and ChokePoint forecasts the <b>next day's</b> choke points with the trained model — the same engine the rest of the dashboard uses. Optionally add the real next-day file to score the forecast.</p>
+    <div class="card2"><div class="c-bd">
+      <div class="upgrid">
+        <div>
+          <div class="uplab">1 · Recent history <span class="req">required</span></div>
+          <div class="uphint">A CSV of recent events. Use at least <b>2 weeks</b> (7 days minimum) so the model has enough history for its lag &amp; rolling features. We forecast the day <b>after</b> your latest date.</div>
+          <label class="drop" id="upDrop1"><input type="file" id="upHist" accept=".csv" onchange="upPick(1)"><span id="upName1">Choose history CSV…</span></label>
+        </div>
+        <div>
+          <div class="uplab">2 · Actual next day <span class="opt">optional</span></div>
+          <div class="uphint">The real records for the predicted day. Add it to measure accuracy (hit-rate &amp; concentration). Leave empty to just forecast.</div>
+          <label class="drop" id="upDrop2"><input type="file" id="upAct" accept=".csv" onchange="upPick(2)"><span id="upName2">Choose actual-day CSV…</span></label>
+        </div>
+      </div>
+      <div class="d-flex align-items-center gap-2" style="margin-top:15px;flex-wrap:wrap">
+        <button class="btn-soft" style="background:var(--pri);color:#fff" id="upRun" onclick="runUpload()">Run prediction</button>
+        <span class="hint" id="upStatus"></span>
+      </div>
+      <div class="uphint" style="margin-top:11px">Expected columns: <code>created_datetime</code>, <code>latitude</code>, <code>longitude</code>, <code>police_station</code>, <code>vehicle_type</code>, <code>offence_code</code> (<code>location</code> recommended). Files are processed locally by your server — see INTEGRATION.md.</div>
+    </div></div>
+
+    <div id="upResults" style="display:none">
+      <div class="card2"><div class="c-bd"><div class="fcm" id="upSummary"></div><div id="upWarn"></div></div></div>
+      <div class="card2"><div class="c-hd"><h2 id="upTitle">Predicted choke points — next day</h2><span class="sub" id="upWhen"></span></div>
+        <div class="maprow" style="--mh:clamp(340px,46vh,520px)"><div><div class="lmap" id="upMap" style="height:clamp(340px,46vh,520px)"></div></div>
+          <div class="rail p-0 m-0"><div class="hd"><b>Predicted stations</b><span class="hint">next-day load</span></div><div class="rows" id="upRail"></div></div></div></div>
+      <div class="card2"><div class="c-hd"><h2>When each peaks (2-hour windows)</h2><span class="sub">top stations per shift</span></div>
+        <div class="c-bd" id="upWindows"></div></div>
+      <div class="card2" id="upAccCard" style="display:none"><div class="c-hd"><h2>✅ Was the forecast right?</h2><span class="sub" id="upAccWhen"></span></div>
+        <div class="c-bd"><div class="fcm" id="upAccMetrics" style="margin-bottom:14px"></div>
+          <table class="tbl" id="upAccTbl"></table></div></div>
+    </div>
   </div>
 
   <!-- TAB 5: LIVE -->
@@ -345,7 +398,7 @@ body.rot-dismiss #rotateOverlay{display:none!important}
 <script>
 const G={date:null,station:'All',day:null,sel:0,gap:false,horizon:'day',blind:null};
 const maps={},layers={},charts={};let DATES=[],HELD=[],CUT='',TREND=[];
-const TABNAME={map:'Congestion map',reveal:'Coverage gaps (today)',fc:"Tomorrow's forecast",plan:"Tomorrow's deployment",live:'Live mode'};
+const TABNAME={map:'Congestion map',reveal:'Coverage gaps (today)',fc:"Tomorrow's forecast",plan:"Tomorrow's deployment",live:'Live mode',upload:'Predict from your data'};
 const jget=u=>fetch(u).then(r=>r.json());
 const jpost=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
 function col(v){return v>=75?'#F2545B':v>=50?'#FB8C5A':v>=25?'#F2A33C':'#C3CCD9'}
@@ -591,6 +644,48 @@ function stepLive(n){liveI=Math.min(liveB.length-1,Math.max(0,liveI+n));drawLive
 function togglePlay(){if(liveT)stopPlay();else{document.getElementById('playBtn').textContent='⏸ Pause';liveT=setInterval(()=>stepLive(1),liveD);}}
 function stopPlay(){clearInterval(liveT);liveT=null;const pb=document.getElementById('playBtn');if(pb)pb.textContent='▶ Play';}
 function liveSpeed(){liveD=+document.getElementById('spd').value;if(liveT){stopPlay();togglePlay();}}
+
+// ---- TAB 6 (PREDICT FROM YOUR DATA) ----
+let upFiles={hist:null,act:null};
+function upPick(n){const inp=document.getElementById(n===1?'upHist':'upAct');const f=inp.files[0];
+ if(n===1){upFiles.hist=f;document.getElementById('upName1').textContent=f?f.name:'Choose history CSV…';document.getElementById('upDrop1').classList.toggle('has',!!f);}
+ else{upFiles.act=f;document.getElementById('upName2').textContent=f?f.name:'Choose actual-day CSV…';document.getElementById('upDrop2').classList.toggle('has',!!f);}}
+async function runUpload(){
+ if(!upFiles.hist){document.getElementById('upStatus').textContent='Choose a history CSV first.';return;}
+ const btn=document.getElementById('upRun'),st=document.getElementById('upStatus');
+ btn.disabled=true;st.textContent='Reading your data and forecasting…';
+ const fd=new FormData();fd.append('file',upFiles.hist);if(upFiles.act)fd.append('actual',upFiles.act);
+ try{const r=await fetch('/api/predict_upload',{method:'POST',body:fd}).then(x=>x.json());
+  if(!r.ok){st.textContent='';document.getElementById('upResults').style.display='none';alert(r.error||'Could not process that file.');btn.disabled=false;return;}
+  renderUpload(r);st.textContent=`Forecast ready for ${r.next}.`;
+ }catch(e){st.textContent='';alert('Upload failed: '+e.message);}
+ btn.disabled=false;}
+function renderUpload(r){
+ document.getElementById('upResults').style.display='block';
+ document.getElementById('upSummary').innerHTML=`
+  <div class="met"><div class="n">${r.n_days}</div><div class="l">days of history (${r.span}-day span)</div></div>
+  <div class="met"><div class="n">${r.stations}</div><div class="l">stations in your data</div></div>
+  <div class="met"><div class="n">${r.next}</div><div class="l">day being forecast (after your latest)</div></div>`;
+ let warn='';
+ if(!r.enough_history)warn+=`<div class="watch">⚠ Only ${r.n_days} day(s) of history — the model wants ~7+ days (2 weeks recommended) for stable lag/rolling features. The ranking may be thin.</div>`;
+ if(r.n_unknown)warn+=`<div class="watch">ℹ ${r.n_unknown} station(s) aren't in the shipped Bengaluru model${r.unknown&&r.unknown.length?' ('+r.unknown.slice(0,6).join(', ')+(r.n_unknown>6?'…':'')+')':''}. The day-level ranking still comes from your data; per-window timing is most reliable for known stations — retrain for a new city (see INTEGRATION.md).</div>`;
+ document.getElementById('upWarn').innerHTML=warn;
+ document.getElementById('upTitle').textContent=`Predicted choke points — ${r.next}`;
+ document.getElementById('upWhen').textContent=`from ${r.n_days} days of your records`;
+ const items=r.day_pred.items||[];
+ ensureMap('upMap','upMap');clearL('upMap');const pts=items.filter(x=>x.lat&&x.lon);fitAfter('upMap',pts);
+ pts.forEach(x=>{const mk=L.marker([x.lat,x.lon],{icon:pin(col(x.pred),16+x.pred/100*16)}).addTo(maps.upMap);mk.bindTooltip(x.station+' (predicted)');layers.upMap.push(mk);});
+ document.getElementById('upRail').innerHTML=items.map((x,i)=>`<div class="row"><div class="rk">${i+1}</div><div><div class="rname">${x.station}</div><div class="rarea">predicted load</div></div><div class="rsc" style="color:${col(x.pred)}">${x.pred}</div></div>`).join('');
+ document.getElementById('upWindows').innerHTML='<div class="upwin">'+(r.windows||[]).map(w=>`<div class="upwincol"><div class="upwinh">${w.label}</div>${(w.items||[]).slice(0,5).map((s,i)=>`<div class="upwinr"><span class="rk">${i+1}</span>${s}</div>`).join('')||'<div class="hint">—</div>'}</div>`).join('')+'</div>';
+ const ac=document.getElementById('upAccCard');
+ if(r.accuracy){const a=r.accuracy;ac.style.display='block';
+  document.getElementById('upAccWhen').textContent=`checked against ${a.actual_date}`;
+  document.getElementById('upAccMetrics').innerHTML=`
+   <div class="met"><div class="n">${a.hit}/${a.of}</div><div class="l">of the flagged top stations were genuinely among the day's worst</div></div>
+   <div class="met"><div class="n">${a.cap20}%</div><div class="l">of the actual congestion sat in the stations we flagged (top-20)</div></div>`;
+  document.getElementById('upAccTbl').innerHTML='<tr><th>Station</th><th>Flagged?</th><th>Actually hot?</th><th>Actual load</th></tr>'+a.table.map(t=>`<tr><td>${t.station}</td><td>${t.predicted?'<span class="pill p">flagged</span>':'—'}</td><td>${t.actual_hot?'<span class="pill y">yes</span>':'<span class="pill n">no</span>'}</td><td><div class="bar" style="width:120px;margin:0"><i style="width:${t.actual_norm}%;background:${col(t.actual_norm)}"></i></div></td></tr>`).join('');
+ }else ac.style.display='none';
+ document.getElementById('upResults').scrollIntoView({behavior:'smooth',block:'nearest'});}
 
 // ---- CHAT ----
 const DEFAULT_QS=["Summarise today","What's the worst spot?","Where should we deploy?","Predict tomorrow","Is this a holiday pattern?"];

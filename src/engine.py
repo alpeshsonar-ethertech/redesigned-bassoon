@@ -126,3 +126,34 @@ def name_maps(df):
             nm, ar = gh, ""
         m[gh] = {"name": nm or gh, "area": ar, "lat": round(float(g.lat.mean()), 5), "lon": round(float(g.lon.mean()), 5)}
     return m
+
+
+def build_panel(df, psid_map=None, extend_days=1, wins=7):
+    """Station x date x window panel with the 13 ranking features.
+    Mirrors prepare.py. `extend_days` appends future day(s) with impact=0 so the
+    next day's lag/rolling features are computed from real history.
+    `df` must already have an integer `w` column (= window_of(hour))."""
+    dfw = df[df.w >= 0]
+    stations = sorted(dfw.ps.dropna().astype(str).unique())
+    g = dfw.groupby(["ps", "date", "w"])["impact"].sum().reset_index()
+    last = g.date.max()
+    dates = pd.date_range(g.date.min(), last + pd.Timedelta(days=extend_days), freq="D")
+    idx = pd.MultiIndex.from_product([stations, dates, range(wins)], names=["ps", "date", "w"])
+    p = g.set_index(["ps", "date", "w"]).reindex(idx, fill_value=0).reset_index().sort_values(["ps", "w", "date"])
+    p["dow"] = p.date.dt.dayofweek
+    p["is_wknd"] = (p.dow >= 5).astype(int)
+    p["is_hol"] = p.date.map(is_holiday).astype(int)
+    if psid_map is not None:
+        p["psid"] = p.ps.map(psid_map).fillna(-1).astype(int)
+    else:
+        p["psid"] = p.ps.astype("category").cat.codes
+    gw = p.groupby(["ps", "w"])
+    p["lag1"] = gw.impact.shift(1)
+    p["lag2"] = gw.impact.shift(2)
+    p["lag7"] = gw.impact.shift(7)
+    p["roll7"] = gw.impact.transform(lambda s: s.shift(1).rolling(7).mean())
+    p["roll7max"] = gw.impact.transform(lambda s: s.shift(1).rolling(7).max())
+    p["zw_mean"] = gw.impact.transform(lambda s: s.shift(1).expanding().mean())
+    p["dow_mean"] = p.groupby(["ps", "w", "dow"]).impact.transform(lambda s: s.shift(1).expanding().mean())
+    p["regime_mean"] = p.groupby(["ps", "w", "is_wknd"]).impact.transform(lambda s: s.shift(1).expanding().mean())
+    return p

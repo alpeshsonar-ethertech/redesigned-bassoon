@@ -6,3 +6,4 @@ pyarrow
 fastapi
 uvicorn
 openai
+python-multipart

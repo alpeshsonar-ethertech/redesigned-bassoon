@@ -5,7 +5,7 @@ Forecast = LambdaRank at police-station x 2h-window. Map = geohash detail."""
 import os, json, pickle, warnings
 warnings.filterwarnings("ignore")
 import pandas as pd, numpy as np
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, UploadFile, File
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -510,6 +510,90 @@ def ask(a: Ask):
         return base
     except Exception as e:
         return {**base, "via": "fallback", "error": str(e)[:120]}
+
+@app.post("/api/predict_upload")
+async def predict_upload(file: UploadFile = File(...), actual: UploadFile | None = File(None)):
+    """Forecast the day after an uploaded history CSV using the trained model.
+    Optionally score it against an uploaded actual-next-day CSV."""
+    import tempfile
+    async def _load(up):
+        data = await up.read()
+        tf = tempfile.NamedTemporaryFile(suffix=".csv", delete=False)
+        tf.write(data); tf.close()
+        try:
+            df, _ = E.load_clean(tf.name)
+        finally:
+            os.unlink(tf.name)
+        if len(df) == 0:
+            raise ValueError("no usable rows after cleaning")
+        df = df[df.police_station.notna()].copy()
+        df["ps"] = df.police_station.astype(str)
+        df["w"] = df.hour.map(E.window_of)
+        if len(df) == 0:
+            raise ValueError("no rows with a police_station")
+        return df
+
+    REQ = "Required columns: created_datetime, latitude, longitude, police_station, vehicle_type, offence_code (location recommended)."
+    try:
+        hist = await _load(file)
+    except Exception as e:
+        return {"ok": False, "error": f"Could not read the history CSV: {str(e)[:160]}. {REQ}"}
+
+    ndays = int(hist.date.nunique())
+    span = int((hist.date.max() - hist.date.min()).days) + 1
+    target = hist.date.max() + pd.Timedelta(days=1)
+    panel = E.build_panel(hist, psid_map=PSID, extend_days=1)
+    rows = panel[panel.date == target].copy()
+    if len(rows) == 0:
+        return {"ok": False, "error": "Not enough data to form a forecast."}
+    rows["score"] = RK["ranker_day"].predict(rows[F])
+    cen = E.station_centroids(hist)
+    up_st = set(hist.ps.dropna().astype(str).unique())
+    unknown = sorted(up_st - set(PSID.keys()))
+
+    # day-level "where" ranking by roll7 (model-free, works for any station set)
+    dayr = rows.groupby("ps").agg(expected=("roll7", "sum")).reset_index().sort_values("expected", ascending=False)
+    emax = float(dayr.expected.max()) or 1
+    day_items = []
+    for x in dayr.head(15).itertuples():
+        c = cen.get(x.ps, {})
+        day_items.append({"station": x.ps, "pred": int(round(x.expected / emax * 100)),
+                          "lat": c.get("lat"), "lon": c.get("lon")})
+    pred_list = list(dayr.head(10).ps)
+
+    # per-window (shift) order from the ranker
+    windows = []
+    for w in range(WINS):
+        sub = rows[rows.w == w].sort_values("score", ascending=False).head(8)
+        windows.append({"w": w, "label": E.WINDOW_LABELS[w], "items": [r2.ps for r2 in sub.itertuples()]})
+
+    resp = {"ok": True, "next": str(target.date()), "n_days": ndays, "span": span,
+            "stations": len(up_st), "unknown": unknown[:25], "n_unknown": len(unknown),
+            "enough_history": ndays >= 7, "day_pred": {"items": day_items, "pred_list": pred_list},
+            "windows": windows}
+
+    if actual is not None:
+        try:
+            act = await _load(actual)
+        except Exception as e:
+            resp["accuracy_error"] = f"Could not read the actual-day CSV: {str(e)[:160]}. {REQ}"
+            return resp
+        ad = act.groupby("ps").impact.sum().reset_index().sort_values("impact", ascending=False)
+        actmap = dict(zip(ad.ps, ad.impact))
+        actual_top = set(ad.head(10).ps); pred_top = set(pred_list); pred20 = set(dayr.head(20).ps)
+        tot = float(ad.impact.sum()) or 1; amax = float(ad.impact.max()) or 1
+        table = []
+        for s in pred_list:
+            table.append({"station": s, "predicted": True, "actual_hot": s in actual_top,
+                          "actual_norm": int(round(actmap.get(s, 0) / amax * 100))})
+        for s in ad.head(10).ps:
+            if s not in pred_top:
+                table.append({"station": s, "predicted": False, "actual_hot": True,
+                              "actual_norm": int(round(actmap.get(s, 0) / amax * 100))})
+        resp["accuracy"] = {"hit": len(pred_top & actual_top), "of": len(pred_top),
+                            "cap20": round(float(ad[ad.ps.isin(pred20)].impact.sum() / tot * 100), 1),
+                            "actual_date": str(act.date.max().date()), "table": table}
+    return resp
 
 @app.get("/")
 def home():
