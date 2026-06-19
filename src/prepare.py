@@ -41,9 +41,9 @@ df["w"] = df.hour.map(E.window_of)
 print(f"  {len(raw)} rows -> {len(df)} events | stations={df.ps.nunique()}")
 
 # ---- events cache (now WITH police_station + window) ----
-keep = ["date", "hour", "minute", "w", "dow", "gh7", "gh6", "lat", "lon", "impact", "poff", "vclass", "device_id", "created_by_id", "location", "ps"]
+keep = ["date", "hour", "minute", "w", "dow", "gh7", "gh6", "lat", "lon", "impact", "poff", "vclass", "device_id", "created_by_id", "location", "ps", "junction_name"]
 df[keep].to_parquet(os.path.join(CACHE, "events.parquet"))
-print("  wrote events.parquet (with police_station)")
+print("  wrote events.parquet (with police_station + junction_name)")
 
 # ---- geohash name maps (for the map) ----
 names = E.name_maps(df)

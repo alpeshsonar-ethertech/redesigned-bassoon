@@ -67,7 +67,7 @@ def gh_hotspots(d, topn=40):
         if len(out) >= topn: break
     return out
 
-def forecast_stations(date, horizon="day", station=None):
+def forecast_stations(date, horizon="day", station=None, light=False):
     """Rank police stations per window for the day AFTER `date`."""
     nxt = pd.Timestamp(date) + pd.Timedelta(days=1)
     rows = PANEL[PANEL.date == nxt]
@@ -113,11 +113,87 @@ def forecast_stations(date, horizon="day", station=None):
                  for x in dayr.sort_values("expected", ascending=False).head(12).itertuples()]
     day_pred = {"hit": day_hit, "cap10": round(cap10, 1), "cap20": round(cap20, 1), "items": day_items,
                 "pred_list": list(dayr.nlargest(10, "expected").ps), "act_list": list(dayr.nlargest(10, "actual").ps)}
+    day_pred["oracle10"] = round(dayr.nlargest(10, "actual").actual.sum() / tot_act * 100, 1)
+    if not light:
+        _sp = E.station_spots(EV, nxt, topk=4)                           # corners within each predicted station
+        day_pred["spots"] = {it["station"]: _sp.get(it["station"], []) for it in day_items}
     return {"date": str(date), "next": str(nxt.date()), "is_holdout": bool(nxt >= CUT),
             "hit": round(hit_total / nwin, 1) if nwin else 0, "capture": round(cap_total / nwin, 1) if nwin else 0,
             "windows": out_windows, "horizon": horizon, "day_pred": day_pred}
 
+_VALAGG = None
+def agg_validation():
+    """Cached station-level validation across ALL held-out days the model never saw:
+    avg hit@10, avg cap@10, avg oracle@10, worst day, and the per-day series (for a sparkline)."""
+    global _VALAGG
+    if _VALAGG is not None:
+        return _VALAGG
+    import statistics as _st
+    dates = STATIC["dates"]; dset = set(dates); cut = STATIC["meta"]["cut"]
+    held = [d for d in dates if d >= cut and (pd.Timestamp(d) + pd.Timedelta(days=1)).strftime("%Y-%m-%d") in dset]
+    series = []; corner_caps = []
+    for d in held:
+        f = forecast_stations(d, "day", None, light=True)
+        if not f or not f.get("day_pred"):
+            continue
+        dp = f["day_pred"]
+        cc = E.corner_check(EV, pd.Timestamp(f["next"]), dp["pred_list"], topk=3)
+        if cc.get("avg_capk") is not None:
+            corner_caps.append(cc["avg_capk"])
+        series.append({"date": f["next"], "hit": dp["hit"], "cap10": dp["cap10"], "cap20": dp["cap20"],
+                       "oracle10": dp.get("oracle10", 0), "corner": cc.get("avg_capk")})
+    if not series:
+        _VALAGG = {"n": 0}; return _VALAGG
+    worst = min(series, key=lambda s: s["cap10"])
+    _VALAGG = {"n": len(series), "avg_hit": round(_st.mean(s["hit"] for s in series), 1),
+               "avg_cap10": round(_st.mean(s["cap10"] for s in series), 1),
+               "avg_cap20": round(_st.mean(s["cap20"] for s in series), 1),
+               "avg_oracle10": round(_st.mean(s["oracle10"] for s in series), 1),
+               "avg_corner": round(_st.mean(corner_caps), 1) if corner_caps else None,
+               "worst": worst, "series": series}
+    return _VALAGG
+
+_GEOAGG = None
+def geo_agg(K=25):
+    """Cached held-out geo validation: avg cap@K / oracle@K / hit@K across all 38 unseen days + per-day series."""
+    global _GEOAGG
+    if _GEOAGG is not None:
+        return _GEOAGG
+    import statistics as _st
+    dates = STATIC["dates"]; dset = set(dates); cut = STATIC["meta"]["cut"]
+    held = [d for d in dates if d >= cut and (pd.Timestamp(d) + pd.Timedelta(days=1)).strftime("%Y-%m-%d") in dset]
+    series = []
+    for d in held:
+        g = E.geo_forecast(EV, d, K=K, light=True)
+        if not g or not g.get("has_actual"):
+            continue
+        series.append({"date": g["next"], "cap": g["cap"], "oracle": g["oracle"], "hit": g["hit"]})
+    if not series:
+        _GEOAGG = {"n": 0}; return _GEOAGG
+    worst = min(series, key=lambda s: s["cap"])
+    _GEOAGG = {"n": len(series), "K": K, "avg_cap": round(_st.mean(s["cap"] for s in series), 1),
+               "avg_oracle": round(_st.mean(s["oracle"] for s in series), 1),
+               "avg_hit": round(_st.mean(s["hit"] for s in series), 1),
+               "worst": worst, "series": series}
+    return _GEOAGG
+
+import threading as _threading
+_threading.Thread(target=agg_validation, daemon=True).start()  # pre-warm so the demo never waits
+_threading.Thread(target=geo_agg, daemon=True).start()
+
 # ---------- endpoints ----------
+@app.get("/api/geo")
+def geo(date: str = Query(...), k: int = Query(25)):
+    g = E.geo_forecast(EV, date, K=k)
+    if g is None:
+        return {"has_actual": False, "zones": []}
+    g["agg"] = geo_agg(k)
+    return g
+
+@app.get("/api/accuracy")
+def accuracy():
+    return agg_validation()
+
 @app.get("/api/init")
 def init():
     dates = STATIC["dates"]; dset = set(dates)
@@ -181,6 +257,9 @@ def reveal(date: str = Query(None), station: str = Query("All")):
     moves.sort(key=lambda m: -m["gain"])
     cenpt = lambda s: {"name": s, "lat": CEN[s]["lat"], "lon": CEN[s]["lon"]}
     covered_pct = round(sum(m["pct"] for m in moves[:5]), 1)
+    _sp = E.station_spots(EV, pd.Timestamp(date), topk=3)               # corners within each under-served target
+    for m in moves[:5]:
+        m["to_spots"] = _sp.get(m["to"], [])
     return {"naive": [cenpt(s) for s in naive.ps], "real": [cenpt(s) for s in real.ps],
             "overlap": len(ns & rs), "n_missed": len(missed), "n_over": len(over),
             "scope": "day", "moves": moves[:5], "date": date, "covered_pct": covered_pct}
@@ -193,6 +272,10 @@ def forecast(date: str = Query(...), horizon: str = Query("day"), station: str =
     f["has_next"] = True
     f["base_hit"] = _persistence_shift_hit(pd.Timestamp(date), pd.Timestamp(date) + pd.Timedelta(days=1))
     f["score_agg"] = score_agg()
+    if f.get("horizon") == "day" and f.get("day_pred"):
+        f["day_pred"]["corner_check"] = E.corner_check(EV, pd.Timestamp(f["next"]), f["day_pred"]["pred_list"], topk=3)
+        f["val_agg"] = agg_validation()
+        f["geo_agg"] = geo_agg()
     return f
 
 def _persistence_shift_hit(date_ts, nxt_ts):
@@ -318,9 +401,11 @@ def playbook(date: str = Query(...), station: str = Query("All")):
     if station and station != "All":
         active = [s for s in active if s == station] or active[:0]
     active = active[:22]
+    spots = E.station_spots(EV, nxt, topk=5)   # named hot spots per station (junctions centre, roads elsewhere)
     return {"empty": False, "next": str(nxt.date()), "is_holdout": bool(nxt >= CUT),
             "windows": [{"w": w, "label": E.WINDOW_LABELS[w]} for w in range(WINS)],
-            "rows": active, "cells": {s: cells[s] for s in active}, "pairs": pairs}
+            "rows": active, "cells": {s: cells[s] for s in active}, "pairs": pairs,
+            "spots": {s: spots.get(s, []) for s in active}}
 
 @app.get("/api/replay")
 def replay(date: str = Query(...), station: str = Query("All")):
@@ -439,6 +524,20 @@ def day_summary(date, station):
 
 def rich_answer(q, date, station):
     ql = q.lower(); station = station or "All"
+    if any(k in ql for k in ["corner", "within", "inside", "spots in", "where in", "where exactly", "which junction"]):
+        st = next((s for s in CEN if s.lower() in ql), None)
+        if st:
+            sp = E.station_spots(EV, pd.Timestamp(date), topk=4).get(st, [])
+            if sp:
+                def _cs(n):
+                    if n.startswith("BTP") and " - " in n: n = n.split(" - ", 1)[1]
+                    return ", ".join(n.split(",")[:2]).strip()
+                names = ", ".join(f"{_cs(x['name'])} (~{x['per_day']}/day)" for x in sp[:3])
+                return {"action": {"tab": "plan"},
+                        "answer": f"In {st}, post teams at: {names}. These are the usual worst spots inside the station — chronic concentration, not a daily single-spot bet.",
+                        "follow": ["Where should we deploy?", "Predict tomorrow", "What's the worst spot?", "Summarise today"]}
+            return {"action": {"tab": "plan"}, "answer": f"{st} has no concentrated corner on record — its parking activity is low or dispersed.",
+                    "follow": ["Where should we deploy?", "Predict tomorrow", "Summarise today"]}
     if any(k in ql for k in ["worst", "top spot", "biggest", "hotspot"]):
         hot = gh_hotspots(evday(date, station), 5)
         if hot:
@@ -571,6 +670,11 @@ async def predict_upload(file: UploadFile = File(...), actual: UploadFile | None
             "stations": len(up_st), "unknown": unknown[:25], "n_unknown": len(unknown),
             "enough_history": ndays >= 7, "day_pred": {"items": day_items, "pred_list": pred_list},
             "windows": windows}
+    try:                                   # corners within each predicted station, from the uploaded data
+        _sp = E.station_spots(hist, target, topk=4)
+        resp["day_pred"]["spots"] = {it["station"]: _sp.get(it["station"], []) for it in day_items}
+    except Exception:
+        resp["day_pred"]["spots"] = {}
 
     if actual is not None:
         try:
