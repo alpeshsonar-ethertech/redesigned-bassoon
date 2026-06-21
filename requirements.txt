@@ -7,3 +7,4 @@ fastapi
 uvicorn
 openai
 python-multipart
+scikit-learn

@@ -30,7 +30,7 @@
 .kpi .num{font-family:var(--d);font-size:25px;font-weight:800;line-height:1.1}
 .kpi .note{font-size:11px;color:var(--dim)}
 .kpi canvas{margin-top:2px}
-.tabbar{display:flex;gap:5px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px;box-shadow:var(--sh);position:sticky;top:90px;z-index:1020;flex-wrap:wrap}
+.tabbar{display:flex;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px;box-shadow:var(--sh);position:sticky;top:90px;z-index:1020;flex-wrap:wrap}
 .tlink{font-family:var(--d);font-weight:600;font-size:13px;color:var(--mid);border:none;background:none;border-radius:10px;padding:10px 15px;cursor:pointer;display:flex;align-items:center;gap:7px}
 .tlink.on{background:var(--pri);color:#fff}
 .flowbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0 4px;padding:9px 12px;background:linear-gradient(180deg,#F7F8FC,var(--card));border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh)}
@@ -66,7 +66,7 @@
 .rail .hd{padding:12px 15px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
 .rail .hd b{font-size:13px}
 .rows{overflow-y:auto;overflow-x:hidden;max-height:clamp(420px,56vh,620px)}
-.chat{position:sticky;top:78px;align-self:start;height:calc(100vh - 125px);display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh);overflow:hidden}
+.chat{position:sticky;top:100px;align-self:start;height:calc(100vh - 125px);display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh);overflow:hidden}
 .row{display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer}
 .row:hover{background:#F7F8FC}.row.sel{background:#F0EFFF;box-shadow:inset 3px 0 0 var(--pri)}
 .rk{font-family:var(--d);font-weight:700;color:var(--dim);font-size:13px}
@@ -402,7 +402,7 @@ body.rot-dismiss #rotateOverlay{display:none!important}
       </div>
     </div>
 
-    <div class="maprow" style="padding:0;--mh:clamp(380px,52vh,560px)">
+    <div class="maprow mb-4" style="padding:0;--mh:clamp(380px,52vh,560px)">
       <div><div class="lmap" id="liveMap" style="height:clamp(380px,52vh,560px)"></div></div>
       <div class="rail" style="margin-bottom:0"><div class="hd"><b>Right now — worst spots</b><span class="hint" id="lvWin"></span></div><div class="rows" id="lvWorst"></div></div>
     </div>
@@ -592,9 +592,10 @@ function renderGeoCard(g){const el=document.getElementById('geoZones');if(!el)re
  if(gsub)gsub.textContent=sta?`the exact corners in ${g.station} expected to carry the load`:`25 map areas with most parking problems — they hold most of it`;
  if(!g||!g.zones||!g.zones.length){el.innerHTML='<div class="hint" style="padding:12px">No data for this view.</div>';if(hd)hd.innerHTML='';return;}
  const avg=g.agg&&g.agg.avg_cap?g.agg.avg_cap:null;
+ const avgOr=g.agg&&g.agg.avg_oracle?g.agg.avg_oracle:null;
  if(hd)hd.innerHTML=sta
-   ?`These are <b>${g.station}'s ${g.zones.length} busiest corners</b> expected tomorrow${avg?` — on a typical day about <b>~${avg}%</b> of the station's load lands in them (best possible ~${g.oracle||0}%)`:''}. <span class="hint">How it turned out is in “Was the forecast right?” below.</span>`
-   :`These <b>25 areas</b> are where tomorrow's parking load is expected to concentrate${avg?` — about <b>~${avg}%</b> of it on a typical day (the most any plan could catch is ~${g.oracle||98}%)`:''}. Each is sent to the police team(s) that cover it. <span class="hint">How it actually turned out is in “Was the forecast right?” below.</span>`;
+   ?`These are <b>${g.station}'s ${g.zones.length} busiest corners</b> expected tomorrow${avg?` — on a typical day about <b>~${avg}%</b> of the station's load lands in them${avgOr?` (a perfect plan would catch ~${avgOr}%)`:''}`:''}. <span class="hint">How it turned out is in “Was the forecast right?” below.</span>`
+   :`These <b>25 areas</b> are where tomorrow's parking load is expected to concentrate${avg?` — they hold about <b>~${avg}%</b> of it on a typical day${avgOr?` (a perfect plan would catch ~${avgOr}%)`:''}`:''}. Each is sent to the police team(s) that cover it. <span class="hint">How it actually turned out is in “Was the forecast right?” below.</span>`;
  el.innerHTML=g.zones.map((z,i)=>`<div class="zrow"><span class="zr">${i+1}</span><div class="zmain"><div class="znm">${z.label}</div>${sta?'':`<div class="zst">👮 ${(z.stations||[]).map(s=>s.station+(s.share?` <span class="dim">${s.share}%</span>`:'')).join(' · ')||'—'}</div>`}</div></div>`).join('');}
 // Zone/corner + outcome — the validation, identical in both check panels (adapts to scope)
 function renderGeoCheck(g,elId){const el=document.getElementById(elId);if(!el)return;
