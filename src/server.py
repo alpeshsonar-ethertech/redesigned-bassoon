@@ -747,6 +747,13 @@ async def predict_upload(file: UploadFile = File(...), actual: UploadFile | None
     except Exception:
         resp["day_pred"]["spots"] = {}
 
+    try:                                   # geo "where" zones from uploaded history — same layer as the rest of the app
+        geo = E.geo_forecast(hist, str(hist.date.max().date()), K=25)
+        if geo:
+            resp["geo"] = {k: geo.get(k) for k in ("next", "cap", "oracle", "has_actual", "n_zones", "zones")}
+    except Exception:
+        resp["geo"] = None
+
     if actual is not None:
         try:
             act = await _load(actual)
@@ -768,6 +775,13 @@ async def predict_upload(file: UploadFile = File(...), actual: UploadFile | None
         resp["accuracy"] = {"hit": len(pred_top & actual_top), "of": len(pred_top),
                             "cap20": round(float(ad[ad.ps.isin(pred20)].impact.sum() / tot * 100), 1),
                             "actual_date": str(act.date.max().date()), "table": table}
+        try:                               # re-score the geo zones now that we have the actual next day
+            combined = pd.concat([hist, act], ignore_index=True)
+            geo2 = E.geo_forecast(combined, str(hist.date.max().date()), K=25)
+            if geo2:
+                resp["geo"] = {k: geo2.get(k) for k in ("next", "cap", "oracle", "has_actual", "n_zones", "zones")}
+        except Exception:
+            pass
     return resp
 
 @app.get("/")

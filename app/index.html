@@ -368,7 +368,9 @@ body.rot-dismiss #rotateOverlay{display:none!important}
 
     <div id="upResults" style="display:none">
       <div class="card2"><div class="c-bd"><div class="fcm" id="upSummary"></div><div id="upWarn"></div></div></div>
-      <div class="card2"><div class="c-hd"><h2 id="upTitle">Predicted choke points — next day</h2><span class="sub" id="upWhen"></span></div>
+      <div class="card2" id="upGeoCard" style="display:none"><div class="c-hd"><h2 id="upGeoTitle">📍 Where — problem areas in your data</h2><span class="sub">the map areas expected to hold most of the next day's load</span></div>
+        <div class="c-bd"><div id="upGeoHead" class="watch" style="background:#F4FBF7;border-color:#BFE9D6;color:#0F6B47;margin-bottom:12px"></div><div id="upGeoZones"></div></div></div>
+      <div class="card2"><div class="c-hd"><h2 id="upTitle">👮 WHO — predicted police areas</h2><span class="sub" id="upWhen"></span></div>
         <div class="maprow" style="--mh:clamp(340px,46vh,520px)"><div><div class="lmap" id="upMap" style="height:clamp(340px,46vh,520px)"></div></div>
           <div class="rail p-0 m-0"><div class="hd"><b>Predicted stations</b><span class="hint">next-day load</span></div><div class="rows" id="upRail"></div></div></div></div>
       <div class="card2"><div class="c-hd"><h2>When each peaks (2-hour windows)</h2><span class="sub">top stations per shift</span></div>
@@ -603,10 +605,11 @@ function renderGeoCheck(g,elId){const el=document.getElementById(elId);if(!el)re
  const head=`<div class="hint" style="margin:2px 0 9px"><b>📍 ${busy} of ${g.zones.length} ${unit} we flagged were actually busy</b> on ${g.next} — together they held <b>${g.cap}%</b> of ${sta?g.station+"'s":"that day's"} parking load (best any plan could do: ${g.oracle}%).${sta?'':' Each row: the area, the police team(s) covering it, and whether it turned out busy.'}</div>`;
  const rows=g.zones.map((z,i)=>`<div class="zrow"><span class="zr">${i+1}</span><div class="zmain"><div class="znm">${z.label}</div>${sta?'':`<div class="zst">👮 ${(z.stations||[]).map(s=>s.station+(s.share?` <span class="dim">${s.share}%</span>`:'')).join(' · ')||'—'}</div>`}</div><span class="zhit ${z.hit?'y':'n'}">${z.hit?'✓ was busy':'· quiet'}</span></div>`).join('');
  el.innerHTML=head+rows;}
-function staMets(g){const a=g.agg||{};const k=g.K||8;return `
-  <div class="met"><div class="n">${a.avg_cap!=null?'~'+a.avg_cap+'%':(g.cap!=null?'~'+g.cap+'%':'–')}</div><div class="l">🎯 <b>EXACT</b> · of ${g.station}'s load in the <b>corners</b> we name (38-day avg)</div></div>
-  <div class="met"><div class="n">${a.avg_hit!=null?a.avg_hit+'/'+k:(g.hit!=null?g.hit+'/'+k:'–')}</div><div class="l">📍 corners flagged right, of ${k}</div></div>
-  <div class="met"><div class="n">${a.avg_oracle!=null?'~'+a.avg_oracle+'%':(g.oracle!=null?'~'+g.oracle+'%':'–')}</div><div class="l">⛅ best any plan could catch</div></div>`;}
+function staMets(g){const a=g.agg||{};const k=g.K||8;
+  return `
+  <div class="met"><div class="n">${g.cap!=null?'~'+g.cap+'%':(a.avg_cap!=null?'~'+a.avg_cap+'%':'–')}</div><div class="l">🎯 <b>EXACT</b> · of ${g.station}'s load in the <b>corners</b> we name${a.avg_cap!=null?`<span class="dim"> · 38-day avg ~${a.avg_cap}%</span>`:''}</div></div>
+  <div class="met"><div class="n">${g.hit!=null?g.hit+'/'+k:(a.avg_hit!=null?a.avg_hit+'/'+k:'–')}</div><div class="l">📍 corners flagged right, of ${k}${a.avg_hit!=null?`<span class="dim"> · 38-day avg ${a.avg_hit}/${k}</span>`:''}</div></div>
+  <div class="met"><div class="n">${g.oracle!=null?'~'+g.oracle+'%':(a.avg_oracle!=null?'~'+a.avg_oracle+'%':'–')}</div><div class="l">⛅ best any plan could catch${a.avg_oracle!=null?`<span class="dim"> · 38-day avg ~${a.avg_oracle}%</span>`:''}</div></div>`;}
 async function loadForecast(){const f=await jget(`/api/forecast?date=${G.date}&horizon=${G.horizon}&station=${encodeURIComponent(G.station)}`);
  const g=await jget(`/api/geo?date=${G.date}&k=25&station=${encodeURIComponent(G.station)}`);renderGeoCard(g);
  const sta=g&&g.scope==='station';
@@ -632,7 +635,7 @@ async function loadForecast(){const f=await jget(`/api/forecast?date=${G.date}&h
    const chips=sp.length?sp.map(s=>`<span class="spotchip ${s.is_junction?'':'rd'}"><span class="pn"></span>${cleanSpot(s.name)} <span class="pd">~${s.per_day}/day</span></span>`).join(''):'<span class="hint">low / dispersed — no concentrated corner</span>';
    ft.innerHTML+=`<div class="row fcrow" onclick="toggleFc(this)"><div class="rk">${p+1}</div><div><div class="rname">${x.station} <span style="color:var(--pri);font-size:10px;font-weight:700">▸ corners</span></div><div class="rarea">predicted load</div></div><div class="rsc" style="color:${col(x.pred)}">${x.pred}</div></div><div class="fcspots" style="display:none;padding:2px 14px 12px"><div class="spotchips">${chips}</div></div>`;});
  const va=f.val_agg||{n:0};
- document.getElementById('fcMetrics').innerHTML=accMets(va,f.geo_agg);
+ document.getElementById('fcMetrics').innerHTML=accMets(f,g);
  const ga=f.geo_agg||{};const gseries=ga.series||[];
  const sparkbars=gseries.map(s=>`<span title="${s.date}: ${s.cap}% in 25 areas" style="display:inline-block;width:6px;height:${Math.max(4,Math.round(s.cap*0.5))}px;background:${col(s.cap)};margin-right:1px;border-radius:1px;vertical-align:bottom"></span>`).join('');
  const fsp=document.getElementById('fcSpark');if(fsp)fsp.innerHTML=gseries.length?`${accSub(f)}<div class="hint" style="margin-bottom:5px">how much of each day's load was in our 25 areas — across all ${ga.n} days we never saw (taller = more covered · worst ${ga.worst?ga.worst.cap:''}%)</div><div style="line-height:0">${sparkbars}</div>`:accSub(f);
@@ -677,7 +680,7 @@ async function loadPlan(){const s=await jget(`/api/schedule?date=${G.date}&teams
  if(f.day_pred){const dp=f.day_pred;
    const va=f.val_agg||{n:0};
    document.getElementById('didBody').innerHTML=
-   `<div class="fcm" style="margin-bottom:10px">${accMets(va,f.geo_agg)}</div>
+   `<div class="fcm" style="margin-bottom:10px">${accMets(f,g)}</div>
    ${accSub(f)}
    <div class="watch" style="background:#E8F7F0;border-color:#BFE9D6;color:#0F6B47;margin:10px 0 14px">✓ <b>0 extra officers or budget</b> — each station's own team is simply redirected to where it's needed most; the accuracy above is what that redirection buys.</div>
    <div id="didGeoCheck"></div>
@@ -739,12 +742,15 @@ function renderHelp(){const card=document.getElementById('helpCard');if(!card)re
 function winPlain(lbl){const m={'06-08':'6–8am','08-10':'8–10am','10-12':'10am–12pm','12-14':'12–2pm','14-16':'2–4pm','16-18':'4–6pm','18-20':'6–8pm'};return m[lbl]||lbl;}
 function toggleFc(row){const n=row.nextElementSibling;if(n&&n.classList.contains('fcspots'))n.style.display=(n.style.display==='none'?'block':'none');}
 // shared accuracy renderers — used by BOTH "Was the forecast right?" and "Did it work?" so the numbers always match
-function accMets(va,ga){return `
-  <div class="met"><div class="n">${ga&&ga.avg_cap!=null?'~'+ga.avg_cap+'%':'–'}</div><div class="l">📍 <b>WHERE</b> · of tomorrow's load sits in the <b>25 areas</b> we flag</div></div>
-  <div class="met"><div class="n">${va.avg_hit!=null?va.avg_hit+'/10':'–'}</div><div class="l">👮 <b>WHO</b> · top <b>police areas</b> flagged right, of 10</div></div>
-  <div class="met"><div class="n">${va.avg_corner!=null?'~'+va.avg_corner+'%':'–'}</div><div class="l">🎯 <b>EXACT</b> · of each area's load in the <b>corners</b> we name</div></div>`;}
+function accMets(f,g){const dp=(f&&f.day_pred)||{};const va=(f&&f.val_agg)||{};const ga=(f&&f.geo_agg)||{};const cc=dp.corner_check||{};
+ const dWhere=(g&&g.cap!=null)?g.cap:null, dWho=(dp.hit!=null)?dp.hit:null, dExact=(cc.avg_capk!=null)?Math.round(cc.avg_capk):null;
+ const av=(v,suf='%')=>v!=null?`<span class="dim"> · 38-day avg ~${v}${suf}</span>`:'';
+ return `
+  <div class="met"><div class="n">${dWhere!=null?'~'+dWhere+'%':(ga.avg_cap!=null?'~'+ga.avg_cap+'%':'–')}</div><div class="l">📍 <b>WHERE</b> · of this day's load in the <b>25 areas</b> we flagged${av(ga.avg_cap)}</div></div>
+  <div class="met"><div class="n">${dWho!=null?dWho+'/10':(va.avg_hit!=null?va.avg_hit+'/10':'–')}</div><div class="l">👮 <b>WHO</b> · top <b>police areas</b> right, of 10${va.avg_hit!=null?`<span class="dim"> · 38-day avg ${va.avg_hit}/10</span>`:''}</div></div>
+  <div class="met"><div class="n">${dExact!=null?'~'+dExact+'%':(va.avg_corner!=null?'~'+va.avg_corner+'%':'–')}</div><div class="l">🎯 <b>EXACT</b> · of each area's load in the <b>corners</b> we name${av(va.avg_corner)}</div></div>`;}
 function accSub(f){const dp=f.day_pred||{};const flg=(dp.items||[]).slice(0,10).filter(x=>x.predicted);const rt=flg.filter(x=>x.correct).length;
-  return `<div class="hint" style="margin:2px 0 12px">This day (${f.next}): ${rt} of ${flg.length} flagged <b>police areas</b> were genuinely among the worst, capturing <b>${dp.cap10}%</b> of the day's load — one worked example of the WHO row above.</div>`;}
+  return `<div class="hint" style="margin:2px 0 12px">On <b>${f.next}</b>, those ${flg.length} flagged <b>police areas</b> captured <b>${dp.cap10}%</b> of the day's actual parking load (${rt}/${flg.length} were among the day's worst).</div>`;}
 function accLocHTML(f){const dp=f.day_pred||{};const cc=dp.corner_check||{};const va=f.val_agg||{};
   const ts=(cc.top_detail&&cc.top_detail[0])?cc.top_detail[0].station:null;const tcap=(ts&&cc.per_station)?cc.per_station[ts]:null;
   const cd=(cc.top_detail||[]).map(t=>`<span class="spotchip ${t.is_junction?'':'rd'}"><span class="pn"></span>${t.name} <span class="pd">${t.hit?'✓':'·'} ${t.share}%</span></span>`).join('');
@@ -830,7 +836,16 @@ function renderUpload(r){
  if(!r.enough_history)warn+=`<div class="watch">⚠ Only ${r.n_days} day(s) of history — the model wants ~7+ days (2 weeks recommended) for stable lag/rolling features. The ranking may be thin.</div>`;
  if(r.n_unknown)warn+=`<div class="watch">ℹ ${r.n_unknown} station(s) aren't in the shipped Bengaluru model${r.unknown&&r.unknown.length?' ('+r.unknown.slice(0,6).join(', ')+(r.n_unknown>6?'…':'')+')':''}. The day-level ranking still comes from your data; per-window timing is most reliable for known stations — retrain for a new city (see INTEGRATION.md).</div>`;
  document.getElementById('upWarn').innerHTML=warn;
- document.getElementById('upTitle').textContent=`Predicted choke points — ${r.next}`;
+ const gc=document.getElementById('upGeoCard');
+ if(r.geo&&r.geo.zones&&r.geo.zones.length){gc.style.display='block';const z=r.geo;
+   document.getElementById('upGeoTitle').textContent=`📍 Where — problem areas in your data (${z.next})`;
+   const busy=z.has_actual?z.zones.filter(x=>x.hit).length:null;
+   document.getElementById('upGeoHead').innerHTML=z.has_actual
+     ?`<b>${busy} of ${z.zones.length} areas we flagged were actually busy</b> on ${z.next} — together they held <b>${z.cap}%</b> of that day's load (best any plan could do: ${z.oracle}%).`
+     :`These <b>${z.zones.length} map areas</b> are where the next day's load is expected to concentrate in your data. Add the actual next-day CSV above to score them.`;
+   document.getElementById('upGeoZones').innerHTML=z.zones.map((x,i)=>`<div class="zrow"><span class="zr">${i+1}</span><div class="zmain"><div class="znm">${x.label}</div><div class="zst">👮 ${(x.stations||[]).map(s=>s.station+(s.share?` <span class="dim">${s.share}%</span>`:'')).join(' · ')||'—'}</div></div>${x.hit!=null?`<span class="zhit ${x.hit?'y':'n'}">${x.hit?'✓ was busy':'· quiet'}</span>`:''}</div>`).join('');
+ } else gc.style.display='none';
+ document.getElementById('upTitle').textContent=`👮 WHO — predicted police areas (${r.next})`;
  document.getElementById('upWhen').textContent=`from ${r.n_days} days of your records`;
  const items=r.day_pred.items||[];
  ensureMap('upMap','upMap');clearL('upMap');const pts=items.filter(x=>x.lat&&x.lon);fitAfter('upMap',pts);

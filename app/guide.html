@@ -33,7 +33,7 @@ b{color:var(--hi)}
 </style>
 </head>
 <body>
-<div class="band"><div class="in"><h1>ChokePoint — How it works</h1><p>Turning a parking-enforcement log into a next-shift patrol plan</p><a class="back" href="index.html">← Back to dashboard</a></div></div>
+<div class="band"><div class="in"><h1>ChokePoint — How it works</h1><p>Theme: <b>Poor Visibility on Parking-Induced Congestion</b> — turning a parking-enforcement log into a next-shift patrol plan</p><a class="back" href="index.html">← Back to dashboard</a></div></div>
 <div class="in">
 
 <div class="sec">
@@ -77,36 +77,38 @@ b{color:var(--hi)}
 </div>
 
 <div class="sec">
-  <h2><span class="n">4</span>Forecasting tomorrow's hotspots</h2>
-  <p>We predict each zone's expected congestion load for the next shift with a <b>LightGBM (Tweedie)</b> model — chosen because the target is non-negative and zero-inflated. It uses recent-trend features (yesterday, last-7-day average and max, momentum) plus day-of-week, not just static averages — so it genuinely beats a "historical average" baseline.</p>
-  <div class="tagrow"><span class="tag">time-split: train early → test late</span><span class="tag">no data leakage</span><span class="tag">validated on unseen days</span></div>
-  <h3>How we measure it honestly</h3>
+  <h2><span class="n">4</span>Forecasting tomorrow — at the right grain</h2>
+  <p>The key insight: predictable signal lives at a <b>coarse</b> spatial grain. <i>Which</i> exact corner is worst rotates day to day (noise), but the ~5&nbsp;km area that carries the load barely moves. So the lever for accuracy is the <b>spatial unit, not model complexity</b>. ChokePoint forecasts on three nested grains, top-down by how reliable each is:</p>
   <ul>
-    <li><b>Recurring hotspots:</b> over the held-out test period, the predicted top-10 choke points match the actual top-10 — these are the spots worth standing enforcement.</li>
-    <li><b>Impact capture:</b> the predicted top-10 zones contain about a <b>third of the city's total congestion impact</b>.</li>
-    <li><b>Single-day exact</b> is lower (~57%) because one-off busts are noise — and patrol planning targets the recurring problem, not the noise. We show this number too, transparently.</li>
+    <li><b>📍 WHERE — map zones (~5&nbsp;km):</b> a <b>rank-normalized blend</b> per zone (all-history + last-28-day + last-7-day + same-weekday). The flagged <b>25 zones held ~95.8% of the next day's load</b>, averaged over 38 days the model never saw (best any plan could do: 98.3%). The signal is so stable that a chronic-total-only ranking lands within a point of the full blend — evidence it isn't overfit.</li>
+    <li><b>👮 WHO — police teams:</b> each zone routes to the station(s) that cover it. A <b>LightGBM LambdaRanker</b> (grouped by date × 2-hour window, trained only on dates before the cut) orders the per-shift picks; the held-out top-10 station hit is <b>~6.8/10</b>.</li>
+    <li><b>🎯 EXACT — corners (~150&nbsp;m):</b> inside each flagged area, the few corners where the load piles up. Naming them captures <b>~47%</b> of the area's load — the precise daily #1 rotates, but the <i>set</i> is stable.</li>
   </ul>
+  <div class="tagrow"><span class="tag">time-split: train early → test late</span><span class="tag">no data leakage</span><span class="tag">validated on 38 unseen days</span></div>
+  <div class="note"><b>Honest measurement:</b> every number above is computed on <b>held-out days</b> (after the training cut). The harness reproduces the independently-known station <b>cap@20 ≈ 75.9%</b>, so the geo numbers from the same harness are trusted. Each claim is shown with its <b>oracle ceiling</b> (best a perfect plan could do) and the per-day result beside the 38-day average — no cherry-picking.</div>
 </div>
 
 <div class="sec">
-  <h2><span class="n">5</span>From prediction to action: the patrol roster</h2>
-  <p>The "Reallocate" view frames deployment as a <b>maximal-covering</b> problem (Church &amp; ReVelle, 1974): given a fixed number of patrol units, place them to cover the most congestion impact. The what-if shows that moving units from over-served zones to the missed choke points <b>nearly doubles covered impact with no extra manpower</b>. The result is a printable patrol roster — the artifact a sergeant actually carries.</p>
-  <div class="note"><b>Honest line:</b> we report <b>coverage gained</b> (measured from the data). Actual congestion reduction is an <b>estimate</b> under the hot-spot-policing assumption that enforcement presence reduces violations at a location.</div>
+  <h2><span class="n">5</span>From prediction to action: the patrol plan</h2>
+  <p>Each station has its own team. When a station's area is predicted quiet, its team is redirected to the nearest choke point that needs help — so coverage follows the hotspots <b>with no extra manpower</b>. The deployment view turns this into the exact corners to stand at, a <b>call-in-help schedule by time window</b> (which neighbour team to pull in, and when), and a shift-by-shift playbook — the artifact a sergeant actually carries.</p>
+  <div class="note"><b>Honest line:</b> the "Coverage gaps" view reports <b>coverage gained</b> — measured from the data — when patrols are shifted from over-served areas to the busier ones they're currently missing. Actual congestion reduction is an <b>estimate</b> under the hot-spot-policing assumption that enforcement presence reduces violations at a location.</div>
 </div>
 
 <div class="sec">
-  <h2><span class="n">6</span>Bonus: enforcement-quality check</h2>
-  <p>Because we kept the rejected tickets, we can flag zones with abnormally high <b>rejection rates</b> — a signal of unclear or low-quality enforcement worth retraining or re-siting. It's an internal-operations insight BTP can act on immediately, from the same data.</p>
+  <h2><span class="n">6</span>Bonus the same data supports</h2>
+  <p>Because the rejected tickets are kept (just excluded from impact), the same pipeline can flag areas with abnormally high <b>rejection rates</b> — a signal of unclear or low-quality enforcement worth re-siting. It's an internal-operations insight derivable from the identical log, with no extra data.</p>
 </div>
 
 <div class="sec">
-  <h2><span class="n">7</span>The five screens</h2>
+  <h2><span class="n">7</span>The six screens</h2>
+  <p>The police-station selector at the top scopes <b>every</b> screen: pick <b>All Bengaluru</b> for the city view, or one station to drill into it (one grain finer — its corners instead of zones).</p>
   <ul>
-    <li><b>Impact map</b> — every hotspot sized by estimated impact; toggle to the enforcement-gap view; click any zone for its full profile.</li>
-    <li><b>The blind spot</b> — side-by-side: where patrols go today vs where the real choke points are. The core reveal.</li>
-    <li><b>Forecast &amp; roster</b> — predicted hotspots, the patrol roster, and the "Did it work?" validation on unseen days.</li>
-    <li><b>Reallocate</b> — the coverage-optimisation what-if.</li>
-    <li><b>Enforcement quality</b> — rejection-rate hotspots.</li>
+    <li><b>📡 Day replay</b> — a real recorded day played back in 30-minute steps: worst spots as they build, the moments that mattered, an end-of-day summary.</li>
+    <li><b>🗺 Obstruction map</b> — every hotspot sized by estimated impact, with a toggle for spots police are under-covering.</li>
+    <li><b>🎯 Coverage gaps (today)</b> — where patrols go vs where the real load is, and the same-day moves to fix it (cross-station for the city, within-station for one station).</li>
+    <li><b>📅 Tomorrow's forecast</b> — the WHERE zones, each routed to its WHO team(s), then "Was the forecast right?" on the unseen next day.</li>
+    <li><b>♟ Tomorrow's deployment</b> — the plan: exact corners, a call-in-help-by-time card, the shift playbook, and "Did it work?".</li>
+    <li><b>🧪 Predict from your data</b> — upload your own enforcement CSV and get the same zones + teams + corners for the day after your latest record.</li>
   </ul>
 </div>
 
