@@ -387,7 +387,8 @@ body.rot-dismiss #rotateOverlay{display:none!important}
       <button class="btn-soft" id="playBtn" onclick="togglePlay()" style="background:var(--pri);color:#fff">▶ Play</button>
       <button class="btn-soft" onclick="restartLive()">↻ Restart</button>
       <button class="btn-soft" onclick="stepLive(1)">Step ▸</button>
-      <span class="hint">Speed</span><select id="spd" class="form-select form-select-sm" style="width:auto" onchange="liveSpeed()"><option value="900">1×</option><option value="450">2×</option><option value="200">4×</option></select>
+      <button class="btn-soft" onclick="skipLive()">Skip to end ▸▸</button>
+      <span class="hint">Speed</span><select id="spd" class="form-select form-select-sm" style="width:auto" onchange="liveSpeed()"><option value="1800">0.5×</option><option value="900" selected>1×</option><option value="450">2×</option><option value="200">4×</option></select>
       <span class="clk" id="liveClock">06:00</span>
       <span class="simbadge">REPLAY · real recorded day · <span id="liveDate"></span></span>
     </div>
@@ -807,6 +808,7 @@ function renderLiveSummary(){const s=LIVESUM;if(!s)return;
     <div><div class="hint" style="font-weight:600;margin-bottom:8px">Vehicles involved</div>${bars(s.vehicles,'var(--info)')}</div>
   </div>`;}
 function restartLive(){stopPlay();liveI=0;drawLive();togglePlay();}
+function skipLive(){stopPlay();if(!liveB.length)return;liveI=liveB.length-1;drawLive();}
 function stepLive(n){liveI=Math.min(liveB.length-1,Math.max(0,liveI+n));drawLive();if(liveI>=liveB.length-1)stopPlay();}
 function togglePlay(){if(liveT)stopPlay();else{document.getElementById('playBtn').textContent='⏸ Pause';liveT=setInterval(()=>stepLive(1),liveD);}}
 function stopPlay(){clearInterval(liveT);liveT=null;const pb=document.getElementById('playBtn');if(pb)pb.textContent='▶ Play';}
