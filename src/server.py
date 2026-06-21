@@ -182,8 +182,38 @@ _threading.Thread(target=agg_validation, daemon=True).start()  # pre-warm so the
 _threading.Thread(target=geo_agg, daemon=True).start()
 
 # ---------- endpoints ----------
+_STAGG = {}
+def station_agg(station, K=8):
+    """Cached 38-day held-out corner validation for a single station (mirror of geo_agg, one grain finer)."""
+    key = (station, K)
+    if key in _STAGG:
+        return _STAGG[key]
+    import statistics as _st
+    dates = STATIC["dates"]; dset = set(dates); cut = STATIC["meta"]["cut"]
+    held = [d for d in dates if d >= cut and (pd.Timestamp(d) + pd.Timedelta(days=1)).strftime("%Y-%m-%d") in dset]
+    series = []
+    for d in held:
+        g = E.station_forecast(EV, d, station, K=K, light=True)
+        if g and g.get("has_actual"):
+            series.append({"date": g["next"], "cap": g["cap"], "oracle": g["oracle"], "hit": g["hit"]})
+    if not series:
+        r = {"n": 0}
+    else:
+        worst = min(series, key=lambda s: s["cap"])
+        r = {"n": len(series), "K": K, "avg_cap": round(_st.mean(s["cap"] for s in series), 1),
+             "avg_oracle": round(_st.mean(s["oracle"] for s in series), 1),
+             "avg_hit": round(_st.mean(s["hit"] for s in series), 1), "worst": worst, "series": series}
+    _STAGG[key] = r
+    return r
+
 @app.get("/api/geo")
-def geo(date: str = Query(...), k: int = Query(25)):
+def geo(date: str = Query(...), k: int = Query(25), station: str = Query("All")):
+    if station and station != "All":
+        g = E.station_forecast(EV, date, station, K=8)
+        if g is None:
+            return {"has_actual": False, "zones": [], "scope": "station", "station": station}
+        g["agg"] = station_agg(station, K=g["K"])
+        return g
     g = E.geo_forecast(EV, date, K=k)
     if g is None:
         return {"has_actual": False, "zones": []}
@@ -227,9 +257,42 @@ def day(date: str = Query(...), station: str = Query("All")):
                      "is_holiday": bool(is_hol), "holiday_name": STATIC["holidays"].get(str(pd.Timestamp(date).date()), "")},
             "holiday_watch": STATIC["holiday_watch"] if is_hol else []}
 
+def reveal_station(date, station):
+    """Within-station coverage gap: which corners get patrols vs which carry the real load, for one station."""
+    _c = lambda s: ", ".join(str(s).split(",")[:2]).strip()
+    d = evday(date, station)
+    if d.empty or d.location.nunique() < 4:
+        return {"naive": [], "real": [], "overlap": 0, "n_missed": 0, "n_over": 0, "scope": "station",
+                "station": station, "moves": [], "date": date, "covered_pct": 0}
+    gs = d.groupby("location").agg(cis=("impact", "sum"), tickets=("impact", "size"),
+                                   ncov=("device_id", "nunique"), lat=("lat", "mean"), lon=("lon", "mean")).reset_index()
+    gs["gap"] = gs.cis / (gs.ncov + 1)
+    day_total = float(gs.cis.sum()) or 1
+    N = min(8, len(gs))
+    naive = gs.sort_values("tickets", ascending=False).head(N)
+    real = gs.sort_values("gap", ascending=False).head(N)
+    ns, rs = set(naive.location), set(real.location)
+    over = list(ns - rs); missed = list(rs - ns)
+    cism = dict(zip(gs.location, gs.cis)); cen = {r.location: (r.lat, r.lon) for r in gs.itertuples()}
+    srcs = sorted(over, key=lambda x: cism.get(x, 0)); dsts = sorted(missed, key=lambda x: -cism.get(x, 0))
+    moves = []
+    for f_, t_ in zip(srcs, dsts):
+        gain = int(cism.get(t_, 0) - cism.get(f_, 0))
+        if gain > 0:
+            moves.append({"frm": _c(f_), "to": _c(t_), "gain": gain, "pct": round(cism.get(t_, 0) / day_total * 100, 1),
+                          "frm_lat": cen[f_][0], "frm_lon": cen[f_][1], "to_lat": cen[t_][0], "to_lon": cen[t_][1], "to_spots": []})
+    moves.sort(key=lambda m: -m["gain"])
+    covered = round(sum(m["pct"] for m in moves[:5]), 1)
+    cenpt = lambda s: {"name": _c(s), "lat": cen[s][0], "lon": cen[s][1]}
+    return {"naive": [cenpt(s) for s in naive.location], "real": [cenpt(s) for s in real.location],
+            "overlap": len(ns & rs), "n_missed": len(missed), "n_over": len(over), "scope": "station",
+            "station": station, "moves": moves[:5], "date": date, "covered_pct": covered}
+
 @app.get("/api/reveal")
 def reveal(date: str = Query(None), station: str = Query("All")):
     """Per-date station reveal + same-day move recommendation (react-now)."""
+    if station and station != "All":
+        return reveal_station(date, station)
     if date:
         d = evday(date)
         gs = d.groupby("ps").agg(cis=("impact", "sum"), tickets=("impact", "size"), ncov=("device_id", "nunique")).reset_index()
@@ -399,10 +462,18 @@ def playbook(date: str = Query(...), station: str = Query("All")):
     active = [s for s, wd in cells.items() if any(v["s"] != "routine" for v in wd.values())]
     active.sort(key=lambda s: -sum(cells[s].get(w, {}).get("load", 0) for w in range(WINS)))
     if station and station != "All":
-        active = [s for s in active if s == station] or active[:0]
-    active = active[:22]
+        partners = set()
+        for wp in pairs:
+            for p in wp["pairs"]:
+                if p["need"] == station: partners.add(p["helper"])   # teams that come to help this station
+                if p["helper"] == station: partners.add(p["need"])   # where this station lends its team
+        keep = [station] + sorted(partners, key=lambda s: -sum(cells.get(s, {}).get(w, {}).get("load", 0) for w in range(WINS)))
+        active = [s for s in keep if s in cells][:10]
+    else:
+        active = active[:22]
     spots = E.station_spots(EV, nxt, topk=5)   # named hot spots per station (junctions centre, roads elsewhere)
     return {"empty": False, "next": str(nxt.date()), "is_holdout": bool(nxt >= CUT),
+            "focus": station if (station and station != "All") else None,
             "windows": [{"w": w, "label": E.WINDOW_LABELS[w]} for w in range(WINS)],
             "rows": active, "cells": {s: cells[s] for s in active}, "pairs": pairs,
             "spots": {s: spots.get(s, []) for s in active}}

@@ -399,4 +399,45 @@ def geo_forecast(df, date, K=25, light=False):
                       "actual": round(float(act.get(z, 0)), 1) if has_actual else None,
                       "hit": (z in act_top) if has_actual else None})
     return {"next": str(nxt.date()), "K": K, "n_zones": int(d.gh5.nunique()),
-            "cap": cap, "oracle": oracle, "hit": hit, "has_actual": has_actual, "zones": zones}
+            "cap": cap, "oracle": oracle, "hit": hit, "has_actual": has_actual, "zones": zones, "scope": "city"}
+
+
+def station_forecast(df, date, station, K=8, light=False):
+    """Station-scope 'where' forecast: same shape as geo_forecast, but one grain finer (gh7 ~150m corners)
+    inside a single police station. For the drill-down view when a station is selected."""
+    date = pd.Timestamp(date).normalize(); nxt = date + pd.Timedelta(days=1)
+    d = df[df.ps == station].copy()
+    if "gh7" not in d.columns or d.empty:
+        return None
+    d = d[d.gh7.notna() & (d.gh7.astype(str) != "nan")]
+    hist = d[d.date < nxt]
+    if hist.empty:
+        return None
+    rank = geo_rank(hist, nxt, col="gh7")
+    K = int(min(K, len(rank)))
+    pred = list(rank.head(K).index)
+    act = d[d.date == nxt].groupby("gh7").impact.sum()
+    tot = float(act.sum()); has_actual = tot > 0
+    cap = round(act.reindex(pred).fillna(0).sum() / tot * 100, 1) if has_actual else None
+    oracle = round(act.nlargest(K).sum() / tot * 100, 1) if has_actual else None
+    act_top = set(act.nlargest(K).index) if has_actual else set()
+    hit = len(set(pred) & act_top) if has_actual else None
+    if light:
+        return {"next": str(nxt.date()), "K": K, "cap": cap, "oracle": oracle, "hit": hit, "has_actual": has_actual}
+    zones = []; seen = {}
+    for z in pred:
+        g = hist[hist.gh7 == z]
+        if g.empty:
+            g = d[d.gh7 == z]
+        base = _geo_label(g); lab = base
+        if base in seen:
+            lab = f"{base} ({seen[base] + 1})"; seen[base] += 1
+        else:
+            seen[base] = 1
+        zones.append({"zone": z, "label": lab, "lat": round(float(g.lat.mean()), 5), "lon": round(float(g.lon.mean()), 5),
+                      "stations": [{"station": station, "share": 100}], "score": round(float(rank.get(z, 0)), 3),
+                      "actual": round(float(act.get(z, 0)), 1) if has_actual else None,
+                      "hit": (z in act_top) if has_actual else None})
+    return {"next": str(nxt.date()), "K": K, "n_zones": int(d.gh7.nunique()),
+            "cap": cap, "oracle": oracle, "hit": hit, "has_actual": has_actual, "zones": zones,
+            "scope": "station", "station": station}
